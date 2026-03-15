@@ -1,0 +1,153 @@
+:root {
+    /* --- DEFAULT LIGHT THEME --- */
+    --bg-base: #f5f5f7;
+    --glass-bg: rgba(255, 255, 255, 0.45);
+    --glass-border: rgba(255, 255, 255, 0.6);
+    --glass-blur: blur(40px) saturate(150%);
+    
+    --text-main: #1d1d1f;
+    --text-muted: #515154;
+    
+    --btn-bg: rgba(255, 255, 255, 0.6);
+    --btn-hover: rgba(255, 255, 255, 0.9);
+    
+    --discord-color: #5865F2;
+    --radius-lg: 32px; --radius-md: 20px; --radius-sm: 12px;
+}
+
+/* --- DARK THEME (System Auto-Detect) --- */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-base: #000000;
+        --glass-bg: rgba(30, 30, 30, 0.45);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --glass-blur: blur(40px) saturate(150%);
+        --text-main: #f5f5f7;
+        --text-muted: #a1a1a6;
+        --btn-bg: rgba(255, 255, 255, 0.08);
+        --btn-hover: rgba(255, 255, 255, 0.15);
+    }
+}
+
+/* --- SEASONAL VIBES --- */
+body[data-season="winter"] {
+    --bg-base: #0f172a;
+    --glass-bg: rgba(14, 165, 233, 0.15); 
+    --glass-border: rgba(255, 255, 255, 0.3);
+    --btn-bg: rgba(255, 255, 255, 0.1);
+    --text-main: #f8fafc;
+}
+
+body[data-season="spring"] {
+    --bg-base: #f0fdf4; 
+    --glass-bg: rgba(74, 222, 128, 0.15); 
+    --glass-border: rgba(255, 255, 255, 0.6);
+    --btn-bg: rgba(255, 255, 255, 0.5);
+    --text-main: #14532d;
+}
+
+body[data-season="summer"] {
+    --bg-base: #fffbeb;
+    --glass-bg: rgba(251, 191, 36, 0.15); 
+    --glass-border: rgba(255, 255, 255, 0.6);
+    --btn-bg: rgba(255, 255, 255, 0.5);
+    --text-main: #78350f;
+}
+
+body[data-season="autumn"] {
+    --bg-base: #292524;
+    --glass-bg: rgba(234, 88, 12, 0.15); 
+    --glass-border: rgba(255, 255, 255, 0.15);
+    --btn-bg: rgba(255, 255, 255, 0.05);
+    --text-main: #ffedd5;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+
+/* Perfect Centering */
+body { background-color: var(--bg-base); color: var(--text-main); height: 100vh; width: 100vw; overflow: hidden; display: flex; justify-content: center; align-items: center; transition: background-color 0.5s ease; }
+
+/* Background Image (With Blur) */
+.bg-layer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; background: #000; overflow: hidden; }
+.bg-layer img { 
+    width: 100%; 
+    height: 100%; 
+    object-fit: cover; 
+    opacity: 0.8; 
+    filter: blur(8px); /* The background blur */
+    transform: scale(1.05); /* Zooms in slightly to hide blurred edges */
+    transition: opacity 1s ease; 
+}
+.video-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.7)); z-index: 1; }
+
+/* App Layout */
+.app-layout { position: relative; display: flex; align-items: center; justify-content: center; opacity: 0; transform: translateY(20px); transition: opacity 1s ease, transform 1s ease; z-index: 10; }
+
+/* Outside Side Nav */
+.side-nav { position: absolute; left: -170px; display: flex; flex-direction: column; gap: 15px; }
+.nav-btn { background: var(--glass-bg); backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); padding: 18px 24px; border-radius: var(--radius-md); color: var(--text-main); font-size: 1.05rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+.nav-btn:hover { background: var(--btn-hover); transform: translateX(-5px); }
+.nav-btn.active { background: var(--text-main); color: var(--bg-base); border-color: transparent; }
+
+/* Main Glass Card */
+.glass-card { background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 35px; width: 500px; height: 720px; box-shadow: 0 30px 60px rgba(0,0,0,0.15), inset 0 0 0 1px rgba(255,255,255,0.2); display: flex; flex-direction: column; max-width: 95%; }
+
+/* Profile */
+.profile { display: flex; align-items: center; gap: 20px; margin-bottom: 30px; }
+.avatar { width: 80px; height: 80px; border-radius: 50%; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+.profile h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 4px;}
+.profile p { font-size: 0.95rem; color: var(--text-muted); }
+
+/* Swipe Logic */
+.swipe-viewport { flex-grow: 1; overflow: hidden; width: 100%; border-radius: var(--radius-md); position: relative; }
+.swipe-track { display: flex; width: 200%; height: 100%; transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1); }
+.swipe-page { width: 50%; height: 100%; padding: 5px 10px 5px 5px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+.swipe-page::-webkit-scrollbar { width: 5px; }
+.swipe-page::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 5px; }
+
+/* Links */
+.links { display: flex; flex-direction: column; gap: 15px; padding-bottom: 20px;}
+.link-btn { background: var(--btn-bg); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 18px; color: var(--text-main); text-decoration: none; display: flex; align-items: center; justify-content: flex-start; gap: 15px; font-size: 1.05rem; font-weight: 600; transition: 0.2s; box-shadow: 0 4px 15px rgba(0,0,0,0.02);}
+.link-btn i { font-size: 1.3rem; width: 24px; text-align: center; } 
+.link-btn:hover { background: var(--btn-hover); transform: scale(1.02); }
+.discord-btn { background: var(--discord-color); color: #fff; border: none; justify-content: center; }
+.discord-btn:hover { background: #4752c4; }
+
+.embed-iframe { border-radius: 12px; margin-top: 10px; margin-bottom: 20px; }
+
+/* About Me */
+.about-me { background: var(--btn-bg); padding: 25px; border-radius: var(--radius-md); border: 1px solid var(--glass-border); }
+.about-me h2 { font-size: 1.3rem; margin-bottom: 12px; }
+.about-me p { font-size: 1rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 20px;}
+.skills-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.skill-tag { background: rgba(128, 128, 128, 0.15); padding: 8px 14px; border-radius: 20px; font-size: 0.9rem; font-weight: 500;}
+
+/* Floating Spotify Playbar */
+.music-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: calc(100% - 40px); max-width: 600px; background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-border); border-radius: 100px; padding: 12px 25px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 20px 40px rgba(0,0,0,0.2); z-index: 999; }
+.track-info { display: flex; align-items: center; gap: 15px; }
+.track-art { width: 45px; height: 45px; background: rgba(128,128,128,0.2); border-radius: 50%; display: flex; justify-content: center; align-items: center; color: var(--text-muted); font-size: 1.2rem;}
+.song-title { font-size: 1rem; font-weight: 700; }
+.artist { font-size: 0.85rem; color: var(--text-muted); }
+
+.controls { display: flex; align-items: center; gap: 20px; }
+.ctrl-btn { background: none; border: none; color: var(--text-main); font-size: 1.3rem; cursor: pointer; transition: 0.2s;}
+.ctrl-btn:hover { transform: scale(1.1); }
+.main-ctrl { background: var(--text-main); color: var(--bg-base); width: 40px; height: 40px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 1rem;}
+
+.volume-container { display: flex; align-items: center; gap: 10px; width: 100px; }
+input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; background: rgba(128,128,128,0.2); border-radius: 3px; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--text-main); margin-top: -5px; cursor: pointer; }
+
+/* Mobile Responsiveness */
+@media (max-width: 900px) {
+    body { height: auto; min-height: 100vh; padding-bottom: 90px; padding-top: 20px; align-items: flex-start;}
+    .app-layout { position: static; flex-direction: column; padding: 0 15px; width: 100%;}
+    .side-nav { position: static; flex-direction: row; width: 100%; max-width: 500px; justify-content: center; margin-bottom: 15px;}
+    .nav-btn { flex: 1; justify-content: center; padding: 15px; font-size: 0.95rem; }
+    .glass-card { width: 100%; height: 68vh; padding: 25px; }
+    
+    .music-bar { border-radius: 20px; padding: 15px; bottom: 15px; }
+    .volume-container { display: none; }
+    .track-art { border-radius: var(--radius-sm); }
+}
