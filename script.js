@@ -1,6 +1,6 @@
 /* ============================================================
    PREMIUM LINKTREE — script.js
-   § hifi-api (Tidal) music engine — Render-hosted backend
+   § iTunes Search API music engine — no backend, GitHub-ready
    § Silent weather + season engine
    § Internalized iOS tab nav + swipe
    ============================================================ */
@@ -8,41 +8,19 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════════
-   §1  HIFI-API CONFIGURATION
+   §1  ITUNES SEARCH API — music engine
    ─────────────────────────────────────────────────────────
-   hifi-api runs as a Python server on Render (free tier).
-   Render free instances spin down after 15 min of inactivity.
-   The first request after idle takes ~30–50 s to cold-start —
-   this is handled gracefully by the cold-start UX below.
-
-   ► REPLACE the URL below with your actual Render service URL.
-     Find it in: Render dashboard → your service → top of page
-     Format: https://<your-service-name>.onrender.com
+   • Endpoint : https://itunes.apple.com/search
+   • Free, no API key, no account, no backend required
+   • Apple ships CORS headers natively — works from any origin
+   • Returns 30-second MP3 preview streams via `previewUrl`
+   • Artwork: `artworkUrl100` → swap "100x100" → "600x600" for HD
    ─────────────────────────────────────────────────────────
-   ENDPOINTS USED:
-     GET /search/?s=<query>           → search tracks
-     GET /track/?id=<id>&quality=HIGH → 320 kbps AAC stream
+   Each fetch picks a random genre term from GENRE_POOL and a
+   random track from the 50-result pool, so every page load
+   and every shuffle click feels like a different station.
 ══════════════════════════════════════════════════════════ */
 
-const HIFI_BASE = 'https://your-hifi-api.onrender.com'; // ← replace this
-
-/**
- * How long (ms) to wait for hifi-api before giving up.
- * Render free-tier cold starts can reach ~50 s.
- * Set comfortably above that.
- */
-const FETCH_TIMEOUT_MS = 55_000;
-
-/**
- * After this many ms in the loading state with no response,
- * update the subtitle to warn the user the server is waking up.
- */
-const COLD_START_WARN_MS = 6_000;
-
-/* ─────────────────────────────────────────────────────────
-   Genre pool — random term picked per fetch so consecutive
-   shuffles feel like different radio stations.
-───────────────────────────────────────────────────────── */
 const GENRE_POOL = [
   'lofi hip hop',
   'chillwave',
@@ -56,90 +34,39 @@ const GENRE_POOL = [
   'trip hop',
 ];
 
-/* ─────────────────────────────────────────────────────────
-   tidalArtwork — build Tidal CDN cover URL from UUID
-   album.cover in API responses is a bare UUID string.
-───────────────────────────────────────────────────────── */
-function tidalArtwork (uuid, size = 640) {
-  if (!uuid) return '';
-  return `https://resources.tidal.com/images/${uuid}/${size}x${size}.jpg`;
+/**
+ * Upgrade iTunes artwork from 100×100 to 600×600.
+ * Apple uses a predictable URL pattern: "…/100x100bb.jpg"
+ */
+function hdArtwork (url) {
+  return url ? url.replace(/\/\d+x\d+bb\./, '/600x600bb.') : '';
 }
 
-/* ─────────────────────────────────────────────────────────
-   decodeBtsManifest — extract a direct audio URL from the
-   base64-encoded manifest returned by /track/
+/**
+ * Fetch a random playable track from the iTunes Search API.
+ * Filters to only results that have a real `previewUrl`.
+ *
+ * @returns {Promise<{title, artist, artwork, audioUrl}>}
+ * @throws  {Error} on network failure or zero playable results
+ */
+async function fetchRandomTrack () {
+  const term   = GENRE_POOL[Math.floor(Math.random() * GENRE_POOL.length)];
+  const params = new URLSearchParams({
+    term, media: 'music', entity: 'song', limit: '50', country: 'US',
+  });
+  const res = await fetch(`https://itunes.apple.com/search?${params}`);
+  if (!res.ok) throw new Error(`iTunes HTTP ${res.status}`);
 
-   Two manifest types exist:
-   • "application/vnd.tidal.bts"
-       atob() → JSON → { urls: ["https://cdn.tidal.com/..."] }
-       → urls[0] is a directly playable 320 kbps AAC file  ✓
-   • "application/dash+xml"
-       atob() → MPD XML → requires a DASH player (dash.js)
-       → not natively playable in <audio>, return null      ✗
-───────────────────────────────────────────────────────── */
-function decodeBtsManifest (manifest, manifestMimeType) {
-  if (manifestMimeType === 'application/dash+xml') return null;
-  try {
-    const json = JSON.parse(atob(manifest));
-    return json?.urls?.[0] ?? null;
-  } catch {
-    return null;
-  }
-}
+  const data     = await res.json();
+  const playable = (data.results || []).filter(t => t.previewUrl && t.trackName);
+  if (!playable.length) throw new Error('No playable tracks returned');
 
-/* ─────────────────────────────────────────────────────────
-   fetchWithTimeout — wraps fetch() with AbortController so
-   we can give up cleanly on Render cold-start overruns.
-───────────────────────────────────────────────────────── */
-async function fetchWithTimeout (url, ms = FETCH_TIMEOUT_MS) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    return res;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/* ─────────────────────────────────────────────────────────
-   fetchHifiTrack — full two-step pipeline:
-     1. /search/?s=<genre>  → pick a random streamable track
-     2. /track/?id=<id>     → decode manifest → audio URL
-───────────────────────────────────────────────────────── */
-async function fetchHifiTrack () {
-  /* Step 1: search */
-  const term      = GENRE_POOL[Math.floor(Math.random() * GENRE_POOL.length)];
-  const searchRes = await fetchWithTimeout(
-    `${HIFI_BASE}/search/?s=${encodeURIComponent(term)}`
-  );
-  if (!searchRes.ok) throw new Error(`/search/ HTTP ${searchRes.status}`);
-
-  const searchData = await searchRes.json();
-  const streamable = (searchData?.data?.items ?? []).filter(
-    t => t.id && t.allowStreaming && t.streamReady && t.title
-  );
-  if (!streamable.length) throw new Error(`No streamable results for "${term}"`);
-
-  const track = streamable[Math.floor(Math.random() * streamable.length)];
-
-  /* Step 2: fetch stream manifest at quality=HIGH (320 kbps AAC → BTS manifest) */
-  const trackRes = await fetchWithTimeout(
-    `${HIFI_BASE}/track/?id=${track.id}&quality=HIGH`
-  );
-  if (!trackRes.ok) throw new Error(`/track/ HTTP ${trackRes.status}`);
-
-  const trackData = await trackRes.json();
-  const { manifest, manifestMimeType } = trackData?.data ?? {};
-  const audioUrl = decodeBtsManifest(manifest, manifestMimeType);
-
-  if (!audioUrl) throw new Error(`Unsupported manifest type: ${manifestMimeType}`);
-
+  const track = playable[Math.floor(Math.random() * playable.length)];
   return {
-    title   : track.title,
-    artist  : track.artist?.name ?? 'Unknown Artist',
-    artwork : tidalArtwork(track.album?.cover),
-    audioUrl,
+    title   : track.trackName,
+    artist  : track.artistName  || 'Unknown Artist',
+    artwork : hdArtwork(track.artworkUrl100),
+    audioUrl: track.previewUrl,
   };
 }
 
@@ -226,16 +153,12 @@ const mpBar      = document.getElementById('musicBar');
 const mpArtBg    = document.getElementById('mpArtBg');
 
 /* ── State ── */
-let playing         = false;
-let muted           = false;
-let loading         = false;
-let coldStartTimer  = null; // setTimeout handle for the warm-up warning
+let playing = false;
+let muted   = false;
+let loading = false;
 
 /* ─────────────────────────────────────────────────────────
    LOADING STATE
-   Also arms a timer: if no response after COLD_START_WARN_MS,
-   the subtitle changes to "Waking up server…" so the user
-   knows it's a Render cold start, not a broken site.
 ───────────────────────────────────────────────────────── */
 function setLoadingState () {
   loading = true;
@@ -249,13 +172,6 @@ function setLoadingState () {
 
   setControlsEnabled(false);
   if (mpArtBg) mpArtBg.classList.remove('visible');
-
-  /* Cold-start warning — fires only if the fetch is slow */
-  clearTimeout(coldStartTimer);
-  coldStartTimer = setTimeout(() => {
-    /* Only update if we're still in the loading state */
-    if (loading) mpArtist.textContent = 'Waking up server…';
-  }, COLD_START_WARN_MS);
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -263,10 +179,9 @@ function setLoadingState () {
 ───────────────────────────────────────────────────────── */
 function setErrorState () {
   loading = false;
-  clearTimeout(coldStartTimer);
 
   mpTitle.textContent  = 'Radio Offline';
-  mpArtist.textContent = 'Check your Render service';
+  mpArtist.textContent = 'No track available';
 
   mpCover.src = '';
   mpCover.classList.remove('is-loading');
@@ -284,7 +199,6 @@ function setErrorState () {
 ───────────────────────────────────────────────────────── */
 function setReadyState (track) {
   loading = false;
-  clearTimeout(coldStartTimer);
 
   mpTitle.textContent  = track.title;
   mpArtist.textContent = track.artist;
@@ -337,7 +251,7 @@ async function fetchAndLoad (autoplay = false) {
   if (loading) return;
   setLoadingState();
   try {
-    const track = await fetchHifiTrack();
+    const track = await fetchRandomTrack();
     setReadyState(track);
     if (autoplay) tryPlay();
   } catch {
