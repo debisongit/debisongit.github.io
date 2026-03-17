@@ -1,0 +1,30 @@
+# ============================================================
+#  render.yaml — hifi-api deployment config for Render
+#  Place this file in the ROOT of your hifi-api repository.
+#  https://github.com/binimum/hifi-api
+#
+#  Deploy: Render dashboard → New → Blueprint → connect repo
+# ============================================================
+
+services:
+  - type: web
+    name: hifi-api
+    runtime: python
+    plan: free                        # free tier; upgrade anytime
+
+    # Install Python dependencies
+    buildCommand: pip install -r requirements.txt
+
+    # start.sh decodes TOKEN_JSON env var → token.json file,
+    # then launches uvicorn on Render's injected $PORT.
+    startCommand: bash start.sh
+
+    # Render injects PORT automatically. Do not hardcode it.
+    envVars:
+      - key: TOKEN_JSON
+        sync: false          # marks as secret — fill in the Render dashboard
+                             # Value: the base64-encoded contents of token.json
+                             # Generate with: base64 -i token.json | tr -d '\n'
+
+    # Health check so Render knows the service is ready
+    healthCheckPath: /search/?s=test
