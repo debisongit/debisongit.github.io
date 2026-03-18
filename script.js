@@ -22,6 +22,8 @@ const PLAYLIST = [
   'assets/music/song1.mp3',
   'assets/music/song2.mp3',
   'assets/music/song3.mp3',
+   'assets/music/song4.mp3',
+   'assets/music/song5.mp3',
 ];
 
 /* Populated by preCacheAllTracks() at DOMContentLoaded */
@@ -357,7 +359,7 @@ function fadeInVolume () {
    We just call play(), mark state, then fade the volume in.           */
 function tryPlay () {
   if (!audioEl?.src) return;
-  audioEl.muted = true; // ensure muted before play attempt
+  audioEl.muted = false; // ensure muted before play attempt
   audioEl.play()
     .then(() => {
       setPlayState(true);
