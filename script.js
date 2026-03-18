@@ -1,6 +1,6 @@
 /* ============================================================
    PREMIUM LINKTREE — script.js
-   § iTunes Search API music engine — no backend, GitHub-ready
+   § Local MP3 playlist — tags pre-cached at startup
    § Silent weather + season engine
    § Internalized iOS tab nav + swipe
    ============================================================ */
@@ -8,66 +8,113 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════════
-   §1  ITUNES SEARCH API — music engine
+   §1  PLAYLIST + TAG PRE-CACHE
    ─────────────────────────────────────────────────────────
-   • Endpoint : https://itunes.apple.com/search
-   • Free, no API key, no account, no backend required
-   • Apple ships CORS headers natively — works from any origin
-   • Returns 30-second MP3 preview streams via `previewUrl`
-   • Artwork: `artworkUrl100` → swap "100x100" → "600x600" for HD
-   ─────────────────────────────────────────────────────────
-   Each fetch picks a random genre term from GENRE_POOL and a
-   random track from the 50-result pool, so every page load
-   and every shuffle click feels like a different station.
+   Add the path to every MP3 in your assets/music/ folder.
+   All ID3 tags (title, artist, cover art) are read ONCE at
+   page load for every song simultaneously, stored in
+   trackCache[].  fetchRandomTrack() picks from the cache
+   instantly — no file reading during playback transitions,
+   which was causing the 2nd song to lose its metadata.
 ══════════════════════════════════════════════════════════ */
 
-const GENRE_POOL = [
-  'lofi hip hop',
-  'chillwave',
-  'ambient electronic',
-  'synthwave',
-  'indie electronic',
-  'downtempo',
-  'dream pop',
-  'jazzhop',
-  'post rock',
-  'trip hop',
+const PLAYLIST = [
+  'assets/music/song1.mp3',
+  'assets/music/song2.mp3',
+  'assets/music/song3.mp3',
+  'assets/music/song4.mp3',
+  'assets/music/song5.mp3',
 ];
 
-/**
- * Upgrade iTunes artwork from 100×100 to 600×600.
- * Apple uses a predictable URL pattern: "…/100x100bb.jpg"
- */
-function hdArtwork (url) {
-  return url ? url.replace(/\/\d+x\d+bb\./, '/600x600bb.') : '';
+/* Populated by preCacheAllTracks() at DOMContentLoaded */
+let trackCache = [];
+let currentIdx = -1;
+
+function randomIndex () {
+  if (trackCache.length === 1) return 0;
+  let i;
+  do { i = Math.floor(Math.random() * trackCache.length); } while (i === currentIdx);
+  return i;
 }
 
-/**
- * Fetch a random playable track from the iTunes Search API.
- * Filters to only results that have a real `previewUrl`.
- *
- * @returns {Promise<{title, artist, artwork, audioUrl}>}
- * @throws  {Error} on network failure or zero playable results
- */
-async function fetchRandomTrack () {
-  const term   = GENRE_POOL[Math.floor(Math.random() * GENRE_POOL.length)];
-  const params = new URLSearchParams({
-    term, media: 'music', entity: 'song', limit: '50', country: 'US',
-  });
-  const res = await fetch(`https://itunes.apple.com/search?${params}`);
-  if (!res.ok) throw new Error(`iTunes HTTP ${res.status}`);
+function cleanName (filePath) {
+  return filePath
+    .split('/').pop()
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]/g, ' ')
+    .trim();
+}
 
-  const data     = await res.json();
-  const playable = (data.results || []).filter(t => t.previewUrl && t.trackName);
-  if (!playable.length) throw new Error('No playable tracks returned');
-
-  const track = playable[Math.floor(Math.random() * playable.length)];
-  return {
-    title   : track.trackName,
-    artist  : track.artistName  || 'Unknown Artist',
-    artwork : hdArtwork(track.artworkUrl100),
-    audioUrl: track.previewUrl,
+/* ── readOneTags ────────────────────────────────────────────
+   Fetches the full MP3 header as a Blob and reads ID3 tags.
+   No Range header — some embedded cover art exceeds 512 KB
+   and gets silently truncated, causing metadata to fail.
+   ALWAYS resolves — filename fallback on any failure.
+───────────────────────────────────────────────────────── */
+async function readOneTags (filePath) {
+  const fallback = {
+    title   : cleanName(filePath),
+    artist  : 'Unknown Artist',
+    artwork : '',
+    audioUrl: filePath,
   };
+
+  if (typeof window.jsmediatags === 'undefined') return fallback;
+
+  try {
+    const res = await fetch(filePath);
+    if (!res.ok) return fallback;
+
+    const blob = new Blob([await res.arrayBuffer()], { type: 'audio/mpeg' });
+
+    return new Promise(resolve => {
+      window.jsmediatags.read(blob, {
+        onSuccess (result) {
+          const tags    = result.tags || {};
+          const picture = tags.picture;
+          let artwork = '';
+          try {
+            if (picture?.data?.length) {
+              const artBlob = new Blob(
+                [new Uint8Array(picture.data)],
+                { type: picture.format || 'image/jpeg' }
+              );
+              artwork = URL.createObjectURL(artBlob);
+            }
+          } catch { /* no cover — placeholder handles it */ }
+
+          resolve({
+            title   : tags.title  || fallback.title,
+            artist  : tags.artist || fallback.artist,
+            artwork,
+            audioUrl: filePath,
+          });
+        },
+        onError () { resolve(fallback); },
+      });
+    });
+  } catch { return fallback; }
+}
+
+/* ── preCacheAllTracks ──────────────────────────────────────
+   Reads tags SEQUENTIALLY — jsmediatags has internal state
+   that breaks when multiple reads run simultaneously.
+   One at a time guarantees every song gets its metadata.
+───────────────────────────────────────────────────────── */
+async function preCacheAllTracks () {
+  trackCache = [];
+  for (const filePath of PLAYLIST) {
+    trackCache.push(await readOneTags(filePath));
+  }
+}
+
+/* ── fetchRandomTrack ───────────────────────────────────────
+   Picks instantly from the pre-built cache — no I/O.
+───────────────────────────────────────────────────────── */
+async function fetchRandomTrack () {
+  if (!trackCache.length) throw new Error('Track cache empty — PLAYLIST may be empty');
+  currentIdx = randomIndex();
+  return trackCache[currentIdx];
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -197,30 +244,58 @@ function setErrorState () {
 /* ─────────────────────────────────────────────────────────
    READY STATE
 ───────────────────────────────────────────────────────── */
+
+/* Track the previous artwork blob URL so we can revoke it
+   once the new cover is loaded — prevents memory leaks and
+   clears any stale onerror handler from the previous track  */
+let prevArtworkUrl = '';
+
 function setReadyState (track) {
   loading = false;
 
   mpTitle.textContent  = track.title;
   mpArtist.textContent = track.artist;
 
+  /* Clear stale onerror before touching src — this was causing
+     song 2+ covers to silently fall back to the placeholder   */
+  mpCover.onerror = null;
+
+  /* Revoke the previous blob URL to free memory */
+  if (prevArtworkUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(prevArtworkUrl);
+  }
+  prevArtworkUrl = track.artwork || '';
+
   mpCover.classList.remove('is-loading', 'is-error');
-  mpCover.src     = track.artwork || '';
+  mpCover.src = track.artwork || '';
   mpCover.onerror = function () {
     this.onerror = null;
     this.src = `https://api.dicebear.com/8.x/shapes/svg?seed=${encodeURIComponent(track.title)}&backgroundColor=334155`;
   };
 
-  if (mpArtBg && track.artwork) {
-    mpArtBg.style.backgroundImage = `url('${track.artwork}')`;
-    mpArtBg.classList.add('visible');
+  if (mpArtBg) {
+    if (track.artwork) {
+      mpArtBg.style.backgroundImage = `url('${track.artwork}')`;
+      mpArtBg.classList.add('visible');
+    } else {
+      mpArtBg.classList.remove('visible');
+    }
   }
 
   if (audioEl) {
     audioEl.pause();
     audioEl.src    = track.audioUrl;
-    audioEl.volume = parseFloat(mpVolume?.value ?? 0.6);
+    audioEl.volume = parseFloat(mpVolume?.value ?? TARGET_VOL);
     audioEl.muted  = muted;
     audioEl.load();
+
+    /* Random timestamp — fires once when duration becomes known */
+    audioEl.addEventListener('loadedmetadata', function onMeta () {
+      audioEl.removeEventListener('loadedmetadata', onMeta);
+      if (audioEl.duration && isFinite(audioEl.duration)) {
+        audioEl.currentTime = Math.random() * audioEl.duration;
+      }
+    });
   }
 
   setControlsEnabled(true);
@@ -253,7 +328,7 @@ async function fetchAndLoad (autoplay = false) {
   try {
     const track = await fetchRandomTrack();
     setReadyState(track);
-    if (autoplay) tryPlay();
+    if (autoplay) await tryPlay();
   } catch {
     setErrorState();
   }
@@ -262,11 +337,78 @@ async function fetchAndLoad (autoplay = false) {
 /* ─────────────────────────────────────────────────────────
    PLAY helpers
 ───────────────────────────────────────────────────────── */
-function tryPlay () {
+
+const TARGET_VOL = 0.35;
+const FADE_MS    = 1500;
+const FADE_STEPS = 40;
+let   fadeTimer  = null;
+
+function fadeInVolume () {
+  clearInterval(fadeTimer);
+  audioEl.volume = 0;
+  let step = 0;
+  fadeTimer = setInterval(() => {
+    step++;
+    audioEl.volume = Math.min(TARGET_VOL, (step / FADE_STEPS) * TARGET_VOL);
+    if (step >= FADE_STEPS) clearInterval(fadeTimer);
+  }, FADE_MS / FADE_STEPS);
+}
+
+/* unlockAudioContext ─────────────────────────────────────
+   Plays a completely silent 1-sample buffer through the
+   Web Audio API.  This "warms up" the browser's audio
+   permission for the tab so the subsequent audioEl.play()
+   is treated as allowed even without a user gesture.
+   Works reliably in Chrome desktop — the most common case.
+───────────────────────────────────────────────────────── */
+async function unlockAudioContext () {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    /* Resume if the context was suspended (Chrome requires this) */
+    if (ctx.state === 'suspended') await ctx.resume();
+    /* Create and immediately play a 1-sample silent buffer */
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+    /* Give it a tick to register, then close cleanly */
+    await new Promise(r => setTimeout(r, 50));
+    await ctx.close();
+  } catch { /* AudioContext not supported or already unlocked */ }
+}
+
+async function tryPlay () {
   if (!audioEl?.src) return;
-  audioEl.play()
-    .then(() => setPlayState(true))
-    .catch(() => setPlayState(false));
+
+  /* Step 1: unlock the audio context silently */
+  await unlockAudioContext();
+
+  /* Step 2: attempt normal play with fade-in */
+  try {
+    await audioEl.play();
+    setPlayState(true);
+    if (mpVolume) { mpVolume.value = TARGET_VOL; updateVolumeFill(); }
+    fadeInVolume();
+  } catch {
+    /* Still blocked (strict mobile / cold tab) —
+       arm a one-shot listener on the very next interaction */
+    setPlayState(false);
+    const unlock = () => {
+      audioEl.play()
+        .then(() => {
+          setPlayState(true);
+          if (mpVolume) { mpVolume.value = TARGET_VOL; updateVolumeFill(); }
+          fadeInVolume();
+        })
+        .catch(() => {});
+    };
+    document.addEventListener('click',      unlock, { once: true });
+    document.addEventListener('keydown',    unlock, { once: true });
+    document.addEventListener('touchstart', unlock, { once: true, passive: true });
+  }
 }
 
 function setPlayState (state) {
@@ -277,12 +419,22 @@ function setPlayState (state) {
 }
 
 /* ─────────────────────────────────────────────────────────
-   INIT — bind controls once, then fire first fetch
+   INIT — pre-cache all tags, bind controls, then autoplay
 ───────────────────────────────────────────────────────── */
-function initMusicPlayer () {
+async function initMusicPlayer () {
+  /* Read all tags in parallel before doing anything else.
+     This is what guarantees every song has its metadata. */
+  await preCacheAllTracks();
+
   mpPlay?.addEventListener('click', () => {
     if (mpPlay.disabled) return;
-    playing ? (audioEl.pause(), setPlayState(false)) : tryPlay();
+    if (playing) {
+      clearInterval(fadeTimer);
+      audioEl.pause();
+      setPlayState(false);
+    } else {
+      tryPlay();
+    }
   });
 
   mpShuffle?.addEventListener('click', () => {
@@ -312,7 +464,9 @@ function initMusicPlayer () {
   audioEl?.addEventListener('pause', () => setPlayState(false));
   audioEl?.addEventListener('error', () => { if (!loading) setErrorState(); });
 
-  fetchAndLoad(false);
+  /* Attempt autoplay on page load — works on desktop, silently
+     stays paused if the browser's autoplay policy blocks it   */
+  fetchAndLoad(true);
 }
 
 function updateVolumeFill () {
@@ -413,10 +567,10 @@ function staggerLinks () {
 /* ═══════════════════════════════════════════════════════════
    §8  BOOTSTRAP
 ══════════════════════════════════════════════════════════ */
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initNavigation();
   initSwipe();
-  initMusicPlayer();
+  await initMusicPlayer();  // pre-caches all tags before first play
   updateVolumeFill();
   initKeyboard();
   staggerLinks();

@@ -4,12 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Links · YourName</title>
-
+ 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
 </head>
 <body>
 
@@ -115,12 +116,11 @@
                 <i class="fa-solid fa-arrow-up-right-from-square link-btn__arrow"></i>
               </a>
 
-              <a href="mailto:dvsnvfx@gmail.com"
-                 class="link-btn link-btn--email" aria-label="Contact email">
+              <a href="mailto:dvsnvfx@gmail.com" class="link-btn link-btn--email" aria-label="Contact email">
                 <span class="link-btn__icon"><i class="fa-solid fa-envelope"></i></span>
                 <span class="link-btn__body">
                   <span class="link-btn__label">Contact</span>
-                  <span class="link-btn__sublabel">dvsnvfx@gmail.com</span>
+                  <span class="link-btn__sublabel"><span>dvsnvfx@gmail.com</span></span>
                 </span>
                 <i class="fa-solid fa-arrow-up-right-from-square link-btn__arrow"></i>
               </a>
@@ -149,11 +149,11 @@
 
             <header class="about-header">
               <div class="about-eyebrow"><i class="fa-solid fa-sparkles"></i> Who am I?</div>
-              <h2 class="about-title">Hey, I'm <em>YourName</em></h2>
+              <h2 class="about-title">Hey, I'm <em>Denis</em></h2>
             </header>
 
             <p class="about-bio">
-             
+             I like gooning 😳😂 I edit on after effects, mainly AMV & MMV. Consider checking my stuff out thanks 👀!
             </p>
 
             
@@ -238,7 +238,7 @@
         <i class="fa-solid fa-volume-low mp-vol-icon"></i>
         <input
           type="range" class="mp-volume" id="mpVolume"
-          min="0" max="1" step="0.01" value="0.6"
+          min="0" max="1" step="0.01" value="0.35"
           aria-label="Volume"
         />
         <i class="fa-solid fa-volume-high mp-vol-icon"></i>
@@ -247,7 +247,7 @@
     </div>
   </footer>
 
-  <audio id="audioEl" preload="metadata"></audio>
+  <audio id="audioEl" preload="auto" autoplay muted></audio>
   <script src="script.js"></script>
 </body>
 </html>
