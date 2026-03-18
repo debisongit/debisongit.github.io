@@ -22,8 +22,6 @@ const PLAYLIST = [
   'assets/music/song1.mp3',
   'assets/music/song2.mp3',
   'assets/music/song3.mp3',
-  'assets/music/song4.mp3',
-  'assets/music/song5.mp3',
 ];
 
 /* Populated by preCacheAllTracks() at DOMContentLoaded */
@@ -284,18 +282,17 @@ function setReadyState (track) {
 
   if (audioEl) {
     audioEl.pause();
-    audioEl.src    = track.audioUrl;
+    audioEl.muted  = true;
     audioEl.volume = parseFloat(mpVolume?.value ?? TARGET_VOL);
-    audioEl.muted  = muted;
+    audioEl.src    = track.audioUrl;
     audioEl.load();
 
-    /* Random timestamp — fires once when duration becomes known */
-    audioEl.addEventListener('loadedmetadata', function onMeta () {
-      audioEl.removeEventListener('loadedmetadata', onMeta);
-      if (audioEl.duration && isFinite(audioEl.duration)) {
-        audioEl.currentTime = Math.random() * audioEl.duration;
-      }
-    });
+    audioEl.addEventListener('canplay', function onCanPlay () {
+      audioEl.removeEventListener('canplay', onCanPlay);
+      audioEl.play()
+        .then(() => { setPlayState(true); fadeInVolume(); })
+        .catch(() => setPlayState(false));
+    }, { once: true });
   }
 
   setControlsEnabled(true);
@@ -328,7 +325,7 @@ async function fetchAndLoad (autoplay = false) {
   try {
     const track = await fetchRandomTrack();
     setReadyState(track);
-    if (autoplay) await tryPlay();
+    if (autoplay) tryPlay();
   } catch {
     setErrorState();
   }
@@ -345,7 +342,9 @@ let   fadeTimer  = null;
 
 function fadeInVolume () {
   clearInterval(fadeTimer);
+  audioEl.muted  = false;
   audioEl.volume = 0;
+  if (mpVolume) { mpVolume.value = TARGET_VOL; updateVolumeFill(); }
   let step = 0;
   fadeTimer = setInterval(() => {
     step++;
@@ -354,61 +353,17 @@ function fadeInVolume () {
   }, FADE_MS / FADE_STEPS);
 }
 
-/* unlockAudioContext ─────────────────────────────────────
-   Plays a completely silent 1-sample buffer through the
-   Web Audio API.  This "warms up" the browser's audio
-   permission for the tab so the subsequent audioEl.play()
-   is treated as allowed even without a user gesture.
-   Works reliably in Chrome desktop — the most common case.
-───────────────────────────────────────────────────────── */
-async function unlockAudioContext () {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    /* Resume if the context was suspended (Chrome requires this) */
-    if (ctx.state === 'suspended') await ctx.resume();
-    /* Create and immediately play a 1-sample silent buffer */
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
-    src.start(0);
-    /* Give it a tick to register, then close cleanly */
-    await new Promise(r => setTimeout(r, 50));
-    await ctx.close();
-  } catch { /* AudioContext not supported or already unlocked */ }
-}
-
-async function tryPlay () {
+/* Muted autoplay is always permitted (same as <video autoplay muted>).
+   We just call play(), mark state, then fade the volume in.           */
+function tryPlay () {
   if (!audioEl?.src) return;
-
-  /* Step 1: unlock the audio context silently */
-  await unlockAudioContext();
-
-  /* Step 2: attempt normal play with fade-in */
-  try {
-    await audioEl.play();
-    setPlayState(true);
-    if (mpVolume) { mpVolume.value = TARGET_VOL; updateVolumeFill(); }
-    fadeInVolume();
-  } catch {
-    /* Still blocked (strict mobile / cold tab) —
-       arm a one-shot listener on the very next interaction */
-    setPlayState(false);
-    const unlock = () => {
-      audioEl.play()
-        .then(() => {
-          setPlayState(true);
-          if (mpVolume) { mpVolume.value = TARGET_VOL; updateVolumeFill(); }
-          fadeInVolume();
-        })
-        .catch(() => {});
-    };
-    document.addEventListener('click',      unlock, { once: true });
-    document.addEventListener('keydown',    unlock, { once: true });
-    document.addEventListener('touchstart', unlock, { once: true, passive: true });
-  }
+  audioEl.muted = true; // ensure muted before play attempt
+  audioEl.play()
+    .then(() => {
+      setPlayState(true);
+      fadeInVolume();
+    })
+    .catch(() => setPlayState(false));
 }
 
 function setPlayState (state) {
