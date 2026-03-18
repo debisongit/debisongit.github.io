@@ -22,8 +22,6 @@ const PLAYLIST = [
   'assets/music/song1.mp3',
   'assets/music/song2.mp3',
   'assets/music/song3.mp3',
-   'assets/music/song4.mp3',
-   'assets/music/song5.mp3',
 ];
 
 /* Populated by preCacheAllTracks() at DOMContentLoaded */
@@ -423,28 +421,7 @@ async function initMusicPlayer () {
 
   /* Attempt autoplay on page load — works on desktop, silently
      stays paused if the browser's autoplay policy blocks it   */
-  /* Attempt to load the track data and UI immediately, but DO NOT autoplay yet */
   fetchAndLoad(true);
-
-  /* --- THE AUTOPLAY FIX --- 
-     Wait for the user to click, tap, or touch anywhere on the screen.
-     The absolute millisecond they interact with the page, start the music. */
-  const startAudioOnInteraction = () => {
-      // Only attempt to play if it's currently paused and has a source loaded
-      if (!playing && audioEl && audioEl.src) {
-          tryPlay();
-      }
-      // Instantly remove these listeners so they only ever fire once
-      document.removeEventListener('click', startAudioOnInteraction);
-      document.removeEventListener('touchstart', startAudioOnInteraction);
-      document.removeEventListener('keydown', startAudioOnInteraction);
-  };
-
-  // Attach the one-time listeners to the entire document
-  document.addEventListener('click', startAudioOnInteraction);
-  document.addEventListener('touchstart', startAudioOnInteraction, { passive: true });
-  document.addEventListener('keydown', startAudioOnInteraction);
-
 }
 
 function updateVolumeFill () {
