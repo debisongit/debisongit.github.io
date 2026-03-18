@@ -424,7 +424,7 @@ async function initMusicPlayer () {
   /* Attempt autoplay on page load — works on desktop, silently
      stays paused if the browser's autoplay policy blocks it   */
   /* Attempt to load the track data and UI immediately, but DO NOT autoplay yet */
-  fetchAndLoad(false);
+  fetchAndLoad(true);
 
   /* --- THE AUTOPLAY FIX --- 
      Wait for the user to click, tap, or touch anywhere on the screen.
